@@ -3,6 +3,6 @@ transformers
 soundfile
 groq
 pyttsx3
-pyaudio
+pyaudio==0.2.11
 wave
 torch
