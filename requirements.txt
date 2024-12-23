@@ -1,0 +1,8 @@
+streamlit
+transformers
+soundfile
+groq
+pyttsx3
+pyaudio
+wave
+torch
