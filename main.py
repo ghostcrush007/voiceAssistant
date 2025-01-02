@@ -63,7 +63,7 @@ def generate_response(user_input):
         {"role": "user", "content": user_input}
     ]
     completion = client.chat.completions.create(
-        model="llama-3.1-70b-versatile",
+        model="llama-3.3-70b-versatile",
         messages=messages,
         temperature=1,
         max_tokens=1024,
