@@ -1,8 +1,7 @@
+# This is for main.py file
+
 streamlit
-transformers
-soundfile
+sounddevice
+scipy
 groq
-pyttsx3
-pyaudio==0.2.11
-wave
-torch
+python-dotenv
