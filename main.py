@@ -1,115 +1,75 @@
 import streamlit as st
+import sounddevice as sd
+from scipy.io.wavfile import write
 import os
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
-import soundfile as sf
 from groq import Groq
-import pyttsx3
-import pyaudio
-import wave
 from dotenv import load_dotenv
 
-# Load the Whisper model
-stt_model_name = "openai/whisper-tiny"
-stt_model = WhisperForConditionalGeneration.from_pretrained(stt_model_name)
-stt_processor = WhisperProcessor.from_pretrained(stt_model_name)
+load_dotenv()
+st.title("Voice Assistant using GROQ")
+start_recording_button = st.button("Start Recording")
+stop_recording_button = st.button("Stop Recording")
+stop_flag = False
+transcribed_text = ""
+duration = 10
+sample_rate = 44100
+audio_file = "audio.wav"
+recorded_audio = None
+client = Groq()
 
-# Initialize session state variables if not already set
-if 'assistant_response' not in st.session_state:
-    st.session_state.assistant_response = ""
+if 'recorded_audio' not in st.session_state:
+    st.session_state.recorded_audio = None
 
-# Function: Record Audio
-def record_audio(output_path, duration=5, sample_rate=16000, channels=1):
-    """Record audio from the microphone and save it as a .wav file."""
-    chunk = 1024  # Record in chunks of 1024 samples
-    format = pyaudio.paInt16  # 16-bit audio format
-    p = pyaudio.PyAudio()
-
-    st.write("Recording... Please wait.")
-    stream = p.open(format=format, channels=channels, rate=sample_rate, input=True, frames_per_buffer=chunk)
-    frames = []
-
-    for _ in range(0, int(sample_rate / chunk * duration)):
-        data = stream.read(chunk)
-        frames.append(data)
-
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
-
-    with wave.open(output_path, 'wb') as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(p.get_sample_size(format))
-        wf.setframerate(sample_rate)
-        wf.writeframes(b''.join(frames))
-    st.success(f"Audio recorded and saved as {output_path}")
-
-# Function: Speech-to-Text
-def speech_to_text(audio_file_path):
-    try:
-        audio_input, sample_rate = sf.read(audio_file_path)
-        input_features = stt_processor(audio_input, sampling_rate=sample_rate, return_tensors="pt").input_features
-        predicted_ids = stt_model.generate(input_features, language='en')  # Ensure English transcription
-        transcription = stt_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
-        return transcription.strip()
-    except Exception as e:
-        return f"Error during speech-to-text: {e}"
-
-# Function: Generate Response
-def generate_response(user_input):
-    load_dotenv()
-    client = Groq()  # Replace with your Groq API key
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": user_input}
-    ]
+def output_based_on_generated_audio_text(transcribed_text):
     completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=messages,
-        temperature=1,
-        max_tokens=1024,
-        top_p=1,
-        stream=True,
-        stop=None,
+    model="llama-3.3-70b-versatile",
+    messages=[{"role":"system","content":"you are a helpful assistant"},
+              {"role":"user","content":transcribed_text}],
+    temperature=1,
+    max_tokens=1024,
+    top_p=1,
+    stream=True,
+    stop=None,
     )
-    response = ""
+    output = ""
     for chunk in completion:
         if chunk.choices[0].delta.content:
-            response += chunk.choices[0].delta.content
-    return response.strip()
+            output+=chunk.choices[0].delta.content
+    st.write(output.strip())
 
-# Function: Text-to-Speech
-def text_to_speech(text):
-    tts_engine = pyttsx3.init()
-    rate = tts_engine.getProperty('rate')
-    tts_engine.setProperty('rate', rate - 50)  # Adjust speech rate
-    voices = tts_engine.getProperty('voices')
-    tts_engine.setProperty('voice', voices[1].id)  # Change to a different voice
-    tts_engine.say(text)
-    tts_engine.runAndWait()
 
-# Streamlit App
-st.title("Voice Assistant with Streamlit")
+def show_recorded_audio_as_text():
+    
+    filename = r"location where you stored the audio file"
+    with open(filename, "rb") as file:
+        transcription = client.audio.transcriptions.create(
+        file=(filename, file.read()),
+        model="distil-whisper-large-v3-en",
+        response_format="verbose_json",
+    )
+        st.write(transcription.text)
+        transcribed_text = transcription.text
+        output_based_on_generated_audio_text(transcribed_text) 
 
-# Button to Record Audio
-if st.button("Record Audio"):
-    recorded_audio_path = "recorded_audio.wav"
-    record_audio(recorded_audio_path, duration=5)  # Record audio for 5 seconds
+def write_audio_file(recorded_audio):
+    write(audio_file,sample_rate,recorded_audio)
+    st.write("recoding ended...")
+    show_recorded_audio_as_text()
 
-    # Process the recorded audio
-    st.write("Processing the recorded audio...")
-    user_query = speech_to_text(recorded_audio_path)
-    st.write(f"You said: {user_query}")
+if start_recording_button:
+    st.write("Recording started...")
+    st.session_state.recorded_audio = sd.rec(int(duration*sample_rate),samplerate=sample_rate,channels=1,dtype='int16')
+    #sd.wait()
+    if stop_flag==False:
+        sd.wait()
+        write_audio_file(st.session_state.recorded_audio)
 
-    if user_query:
-        # Generate response and store in session state
-        st.write("Generating response...")
-        st.session_state.assistant_response = generate_response(user_query)
-        st.write(f"Assistant: {st.session_state.assistant_response}")
 
-# Speak the output
-if st.button("Speak the Output"):
-    if st.session_state.assistant_response:
-        st.write("Speaking the output...")
-        text_to_speech(st.session_state.assistant_response)
+if stop_recording_button:
+    if st.session_state.recorded_audio is not None:
+        sd.stop()
+        stop_flag = True
+        write_audio_file(st.session_state.recorded_audio)
     else:
-        st.warning("No response to speak. Please record and generate a response first.")
+        st.write("No audio is recorded yet")
+    
