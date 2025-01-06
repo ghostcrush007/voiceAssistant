@@ -40,7 +40,7 @@ def output_based_on_generated_audio_text(transcribed_text):
 
 def show_recorded_audio_as_text():
     
-    filename = r"location where you stored the audio file"
+    filename = r"C:\Gen AI Project\Test for voice models\audio.wav"
     with open(filename, "rb") as file:
         transcription = client.audio.transcriptions.create(
         file=(filename, file.read()),
